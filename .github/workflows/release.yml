@@ -99,7 +99,7 @@ jobs:
 
   release:
     name: Create Release
-    needs: build
+    needs: [build, verify]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -259,11 +259,38 @@ jobs:
             gh release delete "$tag" -R "$REPO" --yes --cleanup-tag
           done < old_tags.txt
 
-  upload_feed:
-    name: Upload Feed to B2
+  verify:
+    name: Verify built packages
     needs: build
     runs-on: ubuntu-latest
-    if: ${{ !cancelled() }}
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v6
+        with:
+          path: artifacts
+          pattern: packages-*
+
+      - name: Require dae/daed on supported targets
+        run: |
+          set -eu
+          fail=0
+          for sdk in 24.10 25.12; do
+            for arch in aarch64_cortex-a53 aarch64_cortex-a72 aarch64_generic x86_64; do
+              dir="artifacts/packages-sdk${sdk}-${arch}/feed"
+              for pkg in dae daed; do
+                if ! ls "$dir"/${pkg}_*.ipk "$dir"/${pkg}-*.apk >/dev/null 2>&1; then
+                  echo "MISSING: $pkg for $arch (SDK $sdk)"; fail=1
+                fi
+              done
+            done
+          done
+          [ "$fail" -eq 0 ] || { echo "verify failed; feed will not be published"; exit 1; }
+          echo "all required dae/daed packages present"
+
+  upload_feed:
+    name: Upload Feed to B2
+    needs: [build, verify]
+    runs-on: ubuntu-latest
 
     steps:
       - name: Download artifacts
