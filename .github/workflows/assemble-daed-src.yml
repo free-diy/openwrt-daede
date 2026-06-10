@@ -10,9 +10,6 @@ on:
 permissions:
   contents: write
 
-env:
-  PGO_URL: https://raw.githubusercontent.com/QiuSimons/luci-app-dae/refs/heads/kix/dae/pprof/default.pgo
-
 jobs:
   assemble:
     runs-on: ubuntu-latest
@@ -56,7 +53,7 @@ jobs:
               && go mod edit -replace github.com/daeuniverse/outbound=../outbound \
               && go mod edit -replace github.com/daeuniverse/quic-go=../quic-go \
               && go mod tidy \
-              && curl -fsSL "$PGO_URL" -o default.pgo )
+              && cp "$GITHUB_WORKSPACE/daed/default.pgo" default.pgo )
 
           # Prebuild web (frozen lockfile = reproducible) and embed.
           corepack enable pnpm

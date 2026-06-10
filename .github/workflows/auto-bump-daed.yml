@@ -1,0 +1,115 @@
+name: Auto bump dae/daed
+
+# Tracks the aggressive combo (daeuniverse + olicesx perf forks), gates on a real
+# SDK build, and only then publishes. main stays clean until the gate is green:
+# all work happens on auto-bump-staging; main is fast-forwarded only on success.
+
+on:
+  schedule:
+    - cron: '30 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+env:
+  STAGING: auto-bump-staging
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect upstream changes
+        id: detect
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          . daed/pins.env
+          daed_new=$(git ls-remote https://github.com/daeuniverse/daed HEAD | cut -f1)
+          wing_new=$(git ls-remote https://github.com/daeuniverse/dae-wing HEAD | cut -f1)
+          core_new=$(git ls-remote https://github.com/olicesx/dae kdae | cut -f1)
+          outbound_new=$(git ls-remote https://github.com/olicesx/outbound perf/complete-optimizations | cut -f1)
+          quicgo_new=$(git ls-remote https://github.com/olicesx/quic-go perf/node-pooling-v2 | cut -f1)
+          if [ "$daed_new" = "$DAED_COMMIT" ] && [ "$wing_new" = "$WING_COMMIT" ] \
+             && [ "$core_new" = "$CORE_COMMIT" ] && [ "$outbound_new" = "$OUTBOUND_COMMIT" ] \
+             && [ "$quicgo_new" = "$QUICGO_COMMIT" ]; then
+            echo "No upstream change."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          daed_date=$(gh api repos/daeuniverse/daed/commits/$daed_new --jq '.commit.committer.date' | cut -dT -f1 | tr '-' '.')
+          core_date=$(gh api repos/olicesx/dae/commits/$core_new --jq '.commit.committer.date' | cut -dT -f1 | tr '-' '.')
+          {
+            echo "changed=true"
+            echo "daed=$daed_new"; echo "wing=$wing_new"; echo "core=$core_new"
+            echo "outbound=$outbound_new"; echo "quicgo=$quicgo_new"
+            echo "daed_date=$daed_date"; echo "core_date=$core_date"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Sync kenzok8 forks from olicesx
+        if: steps.detect.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh repo sync kenzok8/dae -b kdae --source olicesx/dae --force
+          gh repo sync kenzok8/outbound -b perf/complete-optimizations --source olicesx/outbound --force
+          gh repo sync kenzok8/quic-go -b perf/node-pooling-v2 --source olicesx/quic-go --force
+
+      - name: Stage new pins
+        if: steps.detect.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          D: ${{ steps.detect.outputs.daed_date }}
+          C: ${{ steps.detect.outputs.core_date }}
+        run: |
+          set -eu
+          sed -i \
+            -e "s/^DAE_VERSION=.*/DAE_VERSION=$C/" \
+            -e "s/^DAED_VERSION=.*/DAED_VERSION=$D/" \
+            -e "s/^DAED_COMMIT=.*/DAED_COMMIT=${{ steps.detect.outputs.daed }}/" \
+            -e "s/^WING_COMMIT=.*/WING_COMMIT=${{ steps.detect.outputs.wing }}/" \
+            -e "s/^CORE_COMMIT=.*/CORE_COMMIT=${{ steps.detect.outputs.core }}/" \
+            -e "s/^OUTBOUND_COMMIT=.*/OUTBOUND_COMMIT=${{ steps.detect.outputs.outbound }}/" \
+            -e "s/^QUICGO_COMMIT=.*/QUICGO_COMMIT=${{ steps.detect.outputs.quicgo }}/" \
+            daed/pins.env
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$STAGING"
+          git add daed/pins.env
+          git commit -m "chore: bump dae/daed pins to daed-${{ steps.detect.outputs.daed }}"
+          git push -f origin "$STAGING"
+
+      - name: Assemble + gate build on staging
+        if: steps.detect.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          run_and_wait() { # <workflow-file> [extra dispatch args...]
+            gh workflow run "$1" --ref "$STAGING" "${@:2}"
+            sleep 12
+            id=$(gh run list --workflow "$1" --branch "$STAGING" --limit 1 --json databaseId --jq '.[0].databaseId')
+            echo "watching $1 run $id"
+            gh run watch "$id" --exit-status
+          }
+          run_and_wait assemble-dae-src.yml
+          run_and_wait assemble-daed-src.yml
+          # gate: real SDK compile of both, no publish
+          run_and_wait test-daed-build.yml -f packages="dae daed"
+
+      - name: Promote to main and publish
+        if: steps.detect.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          git fetch origin "$STAGING"
+          git push origin "origin/$STAGING:main"
+          gh workflow run release.yml --ref main -f prerelease=false || \
+            gh workflow run release.yml --ref main
