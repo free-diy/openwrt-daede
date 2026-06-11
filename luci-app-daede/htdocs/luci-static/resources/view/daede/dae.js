@@ -222,7 +222,7 @@ function renderDaeForms(ctx) {
 
 	/* Manual nodes (share links) */
 	s = m.section(form.GridSection, 'node', _('Nodes'),
-		_('每行添加一个节点分享链接，支持 ss、vmess、vless、trojan、tuic、hysteria2、socks5。'));
+		_('One node share link per line — ss, vmess, vless, trojan, tuic, hysteria2, socks5.'));
 	s.addremove = true;
 	s.anonymous = true;
 	s.sortable = false;
@@ -524,14 +524,14 @@ function renderDaeEditor() {
 			phWarn.classList.remove('show');
 			return;
 		}
-		titleEl.textContent = _('⚠ 还差订阅链接才能跑：检测到 %d 行占位 URL').format(hits.length);
+		titleEl.textContent = _('⚠ Still needs a subscription link: %d placeholder URL line(s) detected').format(hits.length);
 		while (howtoEl.firstChild) howtoEl.removeChild(howtoEl.firstChild);
-		/* 用 DOM 拼成富文本说明 —— 比单条字符串可读 */
-		howtoEl.appendChild(document.createTextNode(_('这些 ')));
+		/* assemble rich text from DOM nodes so the code spans keep their styling */
+		howtoEl.appendChild(document.createTextNode(_('These ')));
 		const c1 = document.createElement('code'); c1.textContent = 'example.com'; howtoEl.appendChild(c1);
-		howtoEl.appendChild(document.createTextNode(_(' / ')));
+		howtoEl.appendChild(document.createTextNode(' / '));
 		const c2 = document.createElement('code'); c2.textContent = 'relative/path/to'; howtoEl.appendChild(c2);
-		howtoEl.appendChild(document.createTextNode(_(' 都是 dae 官方模板留的假地址，不是真订阅。把其中任意一行的 URL 换成你机场的订阅链接（删掉多余行），保存即可跑通。')));
+		howtoEl.appendChild(document.createTextNode(_(' are placeholder addresses from dae\'s template, not real subscriptions. Replace the URL on any one line with your airport subscription link (delete the spare lines) and save.')));
 		hits.forEach(function(h) {
 			const lnSpan = E('span', { 'class': 'dd-ph-ln', 'title': _('Jump to line') }, 'L' + h.line);
 			lnSpan.addEventListener('click', function() { jumpToLine(h.line); });
