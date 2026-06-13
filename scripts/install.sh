@@ -7,6 +7,10 @@ GITHUB_API_URL="https://api.github.com/repos/kenzok8/luci-app-daed/releases/late
 GITHUB_PROXY_PREFIX="${GITHUB_PROXY_PREFIX:-https://ghfast.top/}"
 TMP_DIR="/tmp/daede-install"
 
+# Which core backend to install alongside the LuCI app. daed ships the WebUI
+# and is the default the LuCI app expects. Override with DAEDE_CORE=dae|daed|both.
+DAEDE_CORE="${DAEDE_CORE:-daed}"
+
 fetch_text() {
   url="$1"
   if command -v curl >/dev/null 2>&1; then
@@ -66,21 +70,53 @@ feed_base_for() {
   printf '%s/%s/%s' "$B2_FEED_BASE_URL" "$1" "$2"
 }
 
-# 从 B2 manifest 获取包名
-load_manifest_url() {
+# Which packages to fetch, in install order (core before luci so opkg/apk can
+# resolve the luci-app-daede -> core dependency from local files).
+wanted_pkgs() {
+  case "$DAEDE_CORE" in
+    dae)  printf 'dae\nluci-app-daede\n' ;;
+    both) printf 'dae\ndaed\nluci-app-daede\n' ;;
+    *)    printf 'daed\nluci-app-daede\n' ;;
+  esac
+}
+
+# Globals filled by the resolver: space-separated list of "pkg|url|sha256".
+PLAN=""
+MANIFEST_TEXT=""
+
+manifest_value() {
+  printf '%s\n' "$MANIFEST_TEXT" | sed -n "s/^$1=//p" | head -n 1
+}
+
+# Resolve every wanted package from the B2 manifest. Manifest lines look like:
+#   dae=dae_..._<arch>.ipk
+#   dae_sha256=<hex>           (optional)
+#   daed=...
+#   luci-app-daede=...
+resolve_from_manifest() {
   sdk="$1"
   arch="$2"
   base="$(feed_base_for "$sdk" "$arch")"
-  manifest_text="$(fetch_text "${base}/manifest-daede.txt" || true)"
-  [ -n "$manifest_text" ] || return 1
-  luci_file="$(printf '%s\n' "$manifest_text" | sed -n 's/^luci=//p' | head -n 1)"
-  [ -n "$luci_file" ] || return 1
-  LUCI_URL="${base}/${luci_file}"
+  MANIFEST_TEXT="$(fetch_text "${base}/manifest-daede.txt" || true)"
+  [ -n "$MANIFEST_TEXT" ] || return 1
+
+  plan=""
+  for pkg in $(wanted_pkgs); do
+    file="$(manifest_value "$pkg")"
+    if [ -z "$file" ]; then
+      echo "Manifest has no entry for '$pkg' on ${sdk}/${arch}"
+      return 1
+    fi
+    sha="$(manifest_value "${pkg}_sha256")"
+    plan="${plan}${pkg}|${base}/${file}|${sha}
+"
+  done
+  PLAN="$plan"
   return 0
 }
 
-# 从 GitHub release 获取
-load_github_url() {
+# GitHub release fallback (best effort, no sha256 available there).
+resolve_from_github() {
   arch="$1"
   ext="$2"
   payload="$(fetch_text "$GITHUB_API_URL" || true)"
@@ -88,12 +124,49 @@ load_github_url() {
   urls="$(printf '%s\n' "$payload" | sed -n 's/.*"browser_download_url":[[:space:]]*"\([^"]*\)".*/\1/p')"
   [ -n "$urls" ] || return 1
 
-  if [ "$ext" = "apk" ]; then
-    LUCI_URL="$(printf '%s\n' "$urls" | grep -E "/luci-app-daede-[^-]+.*-r[0-9]+-${arch}\.apk$" | head -n 1)"
+  plan=""
+  for pkg in $(wanted_pkgs); do
+    if [ "$pkg" = "luci-app-daede" ]; then
+      if [ "$ext" = "apk" ]; then
+        url="$(printf '%s\n' "$urls" | grep -E "/luci-app-daede-[^/]*-${arch}\.apk$" | head -n 1)"
+      else
+        url="$(printf '%s\n' "$urls" | grep -E '/luci-app-daede_.*_all\.ipk$' | head -n 1)"
+      fi
+    else
+      if [ "$ext" = "apk" ]; then
+        url="$(printf '%s\n' "$urls" | grep -E "/${pkg}-[^/]*-${arch}\.apk$" | head -n 1)"
+      else
+        url="$(printf '%s\n' "$urls" | grep -E "/${pkg}_[^/]*_${arch}\.ipk$" | head -n 1)"
+      fi
+    fi
+    if [ -z "$url" ]; then
+      echo "GitHub release has no '$pkg' for arch: $arch"
+      return 1
+    fi
+    plan="${plan}${pkg}|${url}|
+"
+  done
+  PLAN="$plan"
+  return 0
+}
+
+verify_sha256() {
+  file="$1"
+  want="$2"
+  [ -n "$want" ] || return 0
+  if command -v sha256sum >/dev/null 2>&1; then
+    got="$(sha256sum "$file" | awk '{print $1}')"
+  elif command -v openssl >/dev/null 2>&1; then
+    got="$(openssl dgst -sha256 "$file" | awk '{print $NF}')"
   else
-    LUCI_URL="$(printf '%s\n' "$urls" | grep -E '/luci-app-daede_.*_all\.ipk$' | head -n 1)"
+    echo "[WARN] no sha256 tool, skipping checksum for $(basename "$file")"
+    return 0
   fi
-  [ -n "$LUCI_URL" ]
+  if [ "$got" != "$want" ]; then
+    echo "Checksum mismatch for $(basename "$file"): expected $want, got $got"
+    return 1
+  fi
+  echo "  sha256 ok: $(basename "$file")"
 }
 
 PM="$(detect_manager)"
@@ -109,35 +182,41 @@ EXT="ipk"
 [ "$PM" = "apk" ] && EXT="apk"
 
 SDK="$(detect_sdk || true)"
-LUCI_URL=""
 
-if [ -n "$SDK" ]; then
-  if load_manifest_url "$SDK" "$ARCH"; then
-    echo "Using B2 manifest: ${SDK}/${ARCH}"
-  fi
-fi
-
-if [ -z "$LUCI_URL" ]; then
-  if load_github_url "$ARCH" "$EXT"; then
-    echo "Using GitHub latest release"
-  else
-    echo "Cannot find luci-app-daede for arch: $ARCH"
-    exit 1
-  fi
+if [ -n "$SDK" ] && resolve_from_manifest "$SDK" "$ARCH"; then
+  echo "Using B2 manifest: ${SDK}/${ARCH}"
+elif resolve_from_github "$ARCH" "$EXT"; then
+  echo "Using GitHub latest release"
+else
+  echo "Cannot resolve daede packages for arch: $ARCH"
+  exit 1
 fi
 
 rm -rf "$TMP_DIR"
 mkdir -p "$TMP_DIR"
 
-echo "Downloading luci-app-daede..."
-download_file "$(download_url "$LUCI_URL")" "$TMP_DIR/luci.${EXT}"
+FILES=""
+echo "$PLAN" | while IFS='|' read -r pkg url sha; do
+  [ -n "$pkg" ] || continue
+  out="$TMP_DIR/${pkg}.${EXT}"
+  echo "Downloading ${pkg}..."
+  download_file "$(download_url "$url")" "$out"
+  verify_sha256 "$out" "$sha"
+done
 
-echo "Installing..."
+# The while loop above runs in a subshell (pipe), so rebuild the file list here.
+for pkg in $(wanted_pkgs); do
+  FILES="$FILES $TMP_DIR/${pkg}.${EXT}"
+done
+
+echo "Installing (core first, then LuCI)..."
 if [ "$PM" = "opkg" ]; then
-  opkg install "$TMP_DIR/luci.${EXT}"
+  # shellcheck disable=SC2086
+  opkg install $FILES
 else
-  echo "[WARN] 签名校验失败，临时使用 --allow-untrusted；构建完成稳定 key 上线后再跑一次本脚本即可。"
-  apk add --allow-untrusted "$TMP_DIR/luci.${EXT}"
+  echo "[WARN] no stable signing key yet, using --allow-untrusted; sha256 is verified above when the manifest provides it."
+  # shellcheck disable=SC2086
+  apk add --allow-untrusted $FILES
 fi
 
 echo "Install complete."
