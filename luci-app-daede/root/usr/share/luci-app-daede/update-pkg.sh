@@ -39,10 +39,24 @@ fi
 
 	if command -v apk >/dev/null 2>&1; then
 		# Serialize with the view's background index refresh (shared apk lock) so
-		# we never hit "Unable to lock database".
-		echo "--- apk update + add $PKG ---"
-		# Target only $PKG (not `apk upgrade`, which re-solves the whole world).
-		flock /tmp/luci-app-daede.apk.lock sh -c 'apk update 2>&1; apk add "$1" 2>&1' _ "$PKG"
+		# we never hit "Unable to lock database". flock via fd to avoid quoting.
+		(
+			flock 9
+			apk update 2>&1
+			# Install the EXACT latest available version with --force-broken-world.
+			# apk-tools 3 `add <name>` re-solves the whole world and aborts if any
+			# OTHER installed package has a pruned/unavailable .apk; pinning the
+			# exact version (whose .apk always exists) + ignoring unrelated broken
+			# world lets this package upgrade regardless. See clashoo component_update.
+			ver=$(apk list "$PKG" 2>/dev/null | awk -v p="$PKG" '$1 ~ "^" p "-[0-9]" { v=$1; sub("^" p "-", "", v); print v }' | sort -V | tail -1)
+			if [ -n "$ver" ]; then
+				echo "--- apk add $PKG=$ver ---"
+				apk add "$PKG=$ver" --force-broken-world 2>&1
+			else
+				echo "--- apk add $PKG ---"
+				apk add "$PKG" --force-broken-world 2>&1
+			fi
+		) 9>/tmp/luci-app-daede.apk.lock
 		# Don't trust apk's exit code: apk-tools 3 returns non-zero whenever ANY
 		# unrelated installed package has an unavailable .apk in the configured
 		# feeds, even when $PKG itself upgraded fine. Judge success by state —
