@@ -5,6 +5,4 @@ HANDOFF.md
 .DS_Store
 docs/
 tests/
-*-plan.md
-*.plan.md
-PLAN.md
+*plan*.md
