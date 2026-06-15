@@ -54,7 +54,7 @@
 
 1. **性能优化栈**（相比原版 dae 的核心差异）
    - **dae 核心**：追 [daeuniverse/dae](https://github.com/daeuniverse/dae) 官方 `main`，装配时把 [olicesx](https://github.com/olicesx) 的性能 fork 作基线、官方 main merge 在其上（eBPF 数据面优化：连接状态合并、egress 重定向、DNS/UDP 路径优化等）。核心永远跟官方同步，又保住性能 fork
-   - **QUIC**：基线 + 我们自持的性能补丁（`ci/patches/quic-go/`，B-tree 节点池优化），复现的 perf tip **正是官方 `daeuniverse/dae` go.mod 自己 pin 的那个**（其 go.mod 注释原话：*"Use optimized quic-go with B-tree node pooling + upstream cherry-picks"*）
+   - **QUIC**：基线 + 我们自持的性能补丁（`ci/patches/quic-go/`，B-tree 节点池优化），复现的 perf tip **
    - **出站**：`outbound` 仍用 olicesx 的优化分支（anytls/sticky-ip 等，分叉较大暂骑上游）
    - **PGO**（Profile-Guided Optimization）：内置 `ci/default.pgo` 采样档，`-pgo=auto` 让编译器按真实热点优化
    - **Go 1.26** + `GOEXPERIMENT=newinliner,simd`（新内联器 + SIMD），静态链接、`-trimpath`
