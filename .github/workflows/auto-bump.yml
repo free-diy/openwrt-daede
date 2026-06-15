@@ -48,12 +48,16 @@ jobs:
             exit 0
           fi
           daed_date=$(gh api repos/daeuniverse/daed/commits/$daed_new --jq '.commit.committer.date' | cut -dT -f1 | tr '-' '.')
+          wing_date=$(gh api repos/daeuniverse/dae-wing/commits/$wing_new --jq '.commit.committer.date' | cut -dT -f1 | tr '-' '.')
           core_date=$(gh api repos/daeuniverse/dae/commits/$core_up_new --jq '.commit.committer.date' | cut -dT -f1 | tr '-' '.')
+          # version = newest component date (YYYY.MM.DD sorts chronologically), used
+          # for BOTH dae and daed so the stamp never regresses when only the core moves.
+          ver=$(printf '%s\n%s\n%s\n' "$daed_date" "$wing_date" "$core_date" | sort -r | head -1)
           {
             echo "changed=true"
             echo "daed=$daed_new"; echo "wing=$wing_new"; echo "core_up=$core_up_new"
             echo "outbound=$outbound_new"
-            echo "daed_date=$daed_date"; echo "core_date=$core_date"
+            echo "ver=$ver"
           } >> "$GITHUB_OUTPUT"
 
       - name: Sync kenzok8 forks from olicesx
@@ -70,13 +74,12 @@ jobs:
         if: steps.detect.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          D: ${{ steps.detect.outputs.daed_date }}
-          C: ${{ steps.detect.outputs.core_date }}
+          V: ${{ steps.detect.outputs.ver }}
         run: |
           set -eu
           sed -i \
-            -e "s/^DAE_VERSION=.*/DAE_VERSION=$C/" \
-            -e "s/^DAED_VERSION=.*/DAED_VERSION=$D/" \
+            -e "s/^DAE_VERSION=.*/DAE_VERSION=$V/" \
+            -e "s/^DAED_VERSION=.*/DAED_VERSION=$V/" \
             -e "s/^DAED_COMMIT=.*/DAED_COMMIT=${{ steps.detect.outputs.daed }}/" \
             -e "s/^WING_COMMIT=.*/WING_COMMIT=${{ steps.detect.outputs.wing }}/" \
             -e "s/^CORE_UPSTREAM_COMMIT=.*/CORE_UPSTREAM_COMMIT=${{ steps.detect.outputs.core_up }}/" \
