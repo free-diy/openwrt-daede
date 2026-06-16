@@ -780,3 +780,14 @@ msgstr ""
 
 msgid "Save failed"
 msgstr ""
+
+msgid "latest version unknown"
+msgstr ""
+
+msgid "Delete the daens netns?"
+msgstr ""
+
+msgid ""
+"%s is running. Deleting the daens netns now will break its networking until "
+"you restart it. Continue?"
+msgstr ""

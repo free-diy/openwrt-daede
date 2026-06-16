@@ -985,3 +985,14 @@ msgstr "数据源已保存。"
 
 msgid "Save failed"
 msgstr "保存失败"
+
+msgid "latest version unknown"
+msgstr "最新版本未知"
+
+msgid "Delete the daens netns?"
+msgstr "删除 daens netns？"
+
+msgid ""
+"%s is running. Deleting the daens netns now will break its networking until "
+"you restart it. Continue?"
+msgstr "%s 正在运行。现在删除 daens netns 会中断其网络，直到重启它。确定继续？"
