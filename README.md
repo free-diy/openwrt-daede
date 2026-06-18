@@ -151,6 +151,15 @@ wget -O - https://raw.githubusercontent.com/kenzok8/openwrt-daede/refs/heads/mai
 
 dae / daed 二进制由用户按需安装，luci-app-daede 的 Makefile 会自动拉取对应后端包。
 
+### 内核 BTF（eBPF CO-RE 必需）
+
+dae / daed 用 CO-RE eBPF，运行时需要内核 BTF（`/sys/kernel/btf/vmlinux`）。开了 `CONFIG_DEBUG_INFO_BTF` 的内核自带（ImmortalWrt 25.12 等）；官方 OpenWrt、在线 ImageBuilder 等固件常**未开**，daed 会启动失败。
+
+补救方式：
+
+- 装匹配内核的 **[kenzok8/vmlinux-btf](https://github.com/kenzok8/vmlinux-btf)** 包补上 BTF（一键安装脚本会自动检测并拉取匹配你内核 + 架构的包）
+- 或刷带 BTF 内核的固件：**[kenzok8/imagebuilder](https://github.com/kenzok8/imagebuilder)**（在线生成，内核已开 BTF）
+
 ## 系统要求
 
 - OpenWrt 24.10+（推荐 25.x）
