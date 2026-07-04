@@ -42,6 +42,26 @@ download_url() {
   esac
 }
 
+# dae/daed hard-depend on the noarch v2ray-geoip/geosite packages, which live in
+# the aggregated feed (one level up from the daed feed). Print their URLs so we
+# install them as local files and satisfy the dep without the device's own repos.
+resolve_geodata() {
+  sdk="$1"; arch="$2"
+  [ -n "$sdk" ] || return 1
+  dir="${FEED_BASE_URL%/daed}/${sdk}/${arch}"
+  listing="$(fetch_text "${dir}/" || true)"
+  [ -n "$listing" ] || return 1
+  for pkg in v2ray-geoip v2ray-geosite; do
+    if [ "$PM" = "apk" ]; then
+      file="$(printf '%s\n' "$listing" | grep -oE "${pkg}-[0-9][^\"/<]*\.apk" | head -n 1)"
+    else
+      file="$(printf '%s\n' "$listing" | grep -oE "${pkg}_[^\"/<]*_all\.ipk" | head -n 1)"
+    fi
+    [ -n "$file" ] || return 1
+    printf '%s/%s\n' "$dir" "$file"
+  done
+}
+
 detect_manager() {
   if command -v opkg >/dev/null 2>&1; then echo opkg; return; fi
   if command -v apk >/dev/null 2>&1; then echo apk; return; fi
@@ -308,6 +328,21 @@ done
 for pkg in $(wanted_pkgs); do
   FILES="$FILES $TMP_DIR/${pkg}.${EXT}"
 done
+
+GEO_URLS="$(resolve_geodata "$SDK" "$RESOLVED_ARCH" || true)"
+if [ -n "$GEO_URLS" ]; then
+  for gurl in $GEO_URLS; do
+    gout="$TMP_DIR/${gurl##*/}"
+    echo "Downloading ${gurl##*/}..."
+    if download_file "$(download_url "$gurl")" "$gout"; then
+      FILES="$FILES $gout"
+    else
+      echo "[WARN] geodata download failed; install may fail on v2ray-geoip/geosite."
+    fi
+  done
+else
+  echo "[WARN] v2ray-geoip/geosite not found in feed for ${SDK:-?}/${RESOLVED_ARCH}; relying on device repos."
+fi
 
 echo "Installing (core first, then LuCI)..."
 if [ "$PM" = "opkg" ]; then
