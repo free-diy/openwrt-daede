@@ -112,6 +112,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${DAED_VERSION}/" daed/Makefile
+          # New upstream pin creates a new PKG_VERSION, so reset the OpenWrt package release.
+          sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/" daed/Makefile
           sed -i "s|^PKG_SOURCE:=.*|PKG_SOURCE:=${TARBALL}|" daed/Makefile
           sed -i "s/^PKG_HASH:=.*/PKG_HASH:=${PKG_HASH}/" daed/Makefile
           git config user.name "github-actions[bot]"
