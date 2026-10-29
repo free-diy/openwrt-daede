@@ -1,6 +1,7 @@
 .github/patches/gh-action-sdk-pahole.patch
 ci/patches/daed-web/0001-keep-setup-outside-keyed-query-provider.patch
 ci/patches/outbound/0002-reality-client-version.patch
+ci/patches/outbound/0003-anytls-honor-insecure-aliases.patch
 dae/patches/010-dns-response-ttl.patch
 dae/patches_arm/0002-feat-Add-vmlinux-arm.h.patch
 dae/patches_arm/0003-drop-kprobe-skb-5.patch

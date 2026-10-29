@@ -22,14 +22,15 @@ fix onto this lineage.
 
 ## Self-owned patches that must survive every sync
 
-The repository currently carries 17 patch files:
+The repository currently carries 18 patch files:
 
 - `dae/patches`: 1 regular dae patch.
 - `dae/patches_arm`: 2 ARM32 compatibility patches.
 - `daed/patches`: 11 daed reliability and update patches.
 - `daed/patches_arm`: 2 ARM32 compatibility patches for the embedded dae core.
-- `ci/patches/outbound`: 1 patch (temporary REALITY client-version bump for
-  Xray-core 26.7.x, see `ci/patches/outbound/README.md`).
+- `ci/patches/outbound`: 2 patches (temporary REALITY client-version bump for
+  Xray-core 26.7.x, and anytls tolerating every skip-verify spelling, see
+  `ci/patches/outbound/README.md`).
 - `ci/patches/quic-go`: currently empty; retained for future backports.
 
 On 2026-08-28 every patch then present was checked against the pinned upstream
@@ -42,7 +43,15 @@ line folded it into `perf/complete-optimizations` as
 `netproxy.UnwrapIntrinsicConn` with the `ssr_obfs_test.go` regression test — so
 the 0001 patch was deleted. Outbound still has no native REALITY version-byte
 strategy; the 0002 patch remains, rebased onto the new `realityVersionX/Y/Z`
-const form.
+const form. The 0003 patch is a compatibility fix in anytls link parsing: that
+parser read only the literal `insecure=1` (other protocols go through
+`dialer.AllowInsecureFromQuery`, which in turn has no plain `insecure`), so a
+link spelling the skip-verify flag any other way — e.g. `allowInsecure=1` —
+imported fine and then failed the dial with a certificate verification error.
+0003 lets anytls accept both families while leaving the shared helper
+untouched. It is not a confirmed fix for issue #108: that report shows
+`NOT ALIVE` without a certificate error in the log, so its root cause is still
+open.
 
 The `patch-absorbed` job in `auto-bump.yml` checks every regular, ARM, outbound
 and quic-go patch in package order. It reports a patch when reverse apply starts
