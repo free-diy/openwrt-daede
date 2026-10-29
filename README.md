@@ -101,6 +101,12 @@
 默认安装 `dae`、`daed` 和 LuCI，并下载 GeoIP、GeoSite 依赖；仅需 `daed` 时可设置 `DAEDE_CORE=daed`。
 
 ```bash
+# 大陆推荐：jsDelivr 镜像，比 ghfast 之类的加速站稳定
+wget -O - https://cdn.jsdelivr.net/gh/kenzok8/openwrt-daede@main/scripts/install.sh | ash
+```
+
+```bash
+# 直连 GitHub（镜像还没同步到最新脚本时用）
 wget -O - https://raw.githubusercontent.com/kenzok8/openwrt-daede/refs/heads/main/scripts/install.sh | ash
 ```
 
@@ -112,11 +118,9 @@ wget -O - https://raw.githubusercontent.com/kenzok8/openwrt-daede/refs/heads/mai
 wget -O - https://raw.githubusercontent.com/kenzok8/openwrt-daede/refs/heads/main/scripts/install.sh | DAEDE_CORE=daed ash
 ```
 
-大陆网络加速：
-
-```bash
-wget --no-check-certificate -O - https://ghfast.top/https://raw.githubusercontent.com/kenzok8/openwrt-daede/refs/heads/main/scripts/install.sh | ash
-```
+> jsDelivr 对 `@main` 有缓存（最长约 12 小时），刚改过的脚本可能延迟生效。
+> 安装包下载默认走 `GITHUB_PROXY_PREFIX`（默认 `https://ghfast.top/`），失败会自动回落到直连 GitHub；
+> 想换加速站可以 `GITHUB_PROXY_PREFIX=https://你的加速站/ wget -O - ... | ash`。
 
 ### Release 手动安装
 

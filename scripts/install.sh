@@ -54,6 +54,19 @@ download_url() {
   esac
 }
 
+# 先走镜像、失败再直连 GitHub：加速站经常抖，单次尝试会让用户以为脚本坏了。
+download_github_url() {
+  _gh_url="$1"
+  _gh_out="$2"
+  download_file "$(download_url "$_gh_url")" "$_gh_out" && return 0
+  if [ -n "$GITHUB_PROXY_PREFIX" ]; then
+    echo "镜像下载失败，改用直连 GitHub 重试" >&2
+    download_file "$_gh_url" "$_gh_out"
+    return $?
+  fi
+  return 1
+}
+
 # dae/daed hard-depend on the noarch v2ray-geoip/geosite packages, which live in
 # the aggregated feed (one level up from the daed feed). Print their URLs so we
 # install them as local files and satisfy the dep without the device's own repos.
@@ -435,7 +448,7 @@ echo "$PLAN" | while IFS='|' read -r pkg url sha; do
   [ -n "$pkg" ] || continue
   out="$TMP_DIR/${pkg}.${EXT}"
   echo "Downloading ${pkg}..."
-  download_file "$(download_url "$url")" "$out"
+  download_github_url "$url" "$out"
   verify_sha256 "$out" "$sha"
 done
 
@@ -450,7 +463,7 @@ if [ -n "$GEO_URLS" ]; then
   for gurl in $GEO_URLS; do
     gout="$TMP_DIR/${gurl##*/}"
     echo "Downloading ${gurl##*/}..."
-    if download_file "$(download_url "$gurl")" "$gout"; then
+    if download_github_url "$gurl" "$gout"; then
       FILES="$FILES $gout"
     else
       echo "[WARN] geodata download failed; install may fail on v2ray-geoip/geosite."
@@ -464,7 +477,7 @@ BTF_URL="$(resolve_btf_url "$GEO_SDK" "$RESOLVED_ARCH" || true)"
 if [ -n "$BTF_URL" ]; then
   bout="$TMP_DIR/${BTF_URL##*/}"
   echo "Downloading ${BTF_URL##*/}..."
-  if download_file "$(download_url "$BTF_URL")" "$bout"; then
+  if download_github_url "$BTF_URL" "$bout"; then
     FILES="$FILES $bout"
   else
     echo "[WARN] vmlinux-btf download failed; install may fail on the BTF dependency."
